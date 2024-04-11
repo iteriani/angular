@@ -900,9 +900,6 @@
     "name": "getBindingsEnabled"
   },
   {
-    "name": "getCallbackScheduler"
-  },
-  {
     "name": "getClosureSafeProperty"
   },
   {
@@ -1146,6 +1143,9 @@
     "name": "isRefreshingViews"
   },
   {
+    "name": "isRootView"
+  },
+  {
     "name": "isSubscription"
   },
   {
@@ -1347,6 +1347,9 @@
     "name": "saveNameToExportMap"
   },
   {
+    "name": "scheduleCallback"
+  },
+  {
     "name": "searchTokensOnInjector"
   },
   {
@@ -1399,9 +1402,6 @@
   },
   {
     "name": "shimStylesContent"
-  },
-  {
-    "name": "shouldRecheckView"
   },
   {
     "name": "shouldSearchParent"

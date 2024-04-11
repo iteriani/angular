@@ -8,7 +8,7 @@
 
 import {APP_BOOTSTRAP_LISTENER, ApplicationRef, whenStable} from '../application/application_ref';
 import {Console} from '../console';
-import {ENVIRONMENT_INITIALIZER, EnvironmentProviders, Injector, makeEnvironmentProviders} from '../di';
+import {ENVIRONMENT_INITIALIZER, EnvironmentProviders, Injector, makeEnvironmentProviders, Provider} from '../di';
 import {inject} from '../di/injector_compatibility';
 import {formatRuntimeError, RuntimeError, RuntimeErrorCode} from '../errors';
 import {enableLocateOrCreateContainerRefImpl} from '../linker/view_container_ref';
@@ -25,6 +25,7 @@ import {performanceMarkFeature} from '../util/performance';
 import {NgZone} from '../zone';
 
 import {cleanupDehydratedViews} from './cleanup';
+import {enableClaimDehydratedIcuCaseImpl, enablePrepareI18nBlockForHydrationImpl, isI18nHydrationEnabled, setIsI18nHydrationSupportEnabled} from './i18n';
 import {IS_HYDRATION_DOM_REUSE_ENABLED, IS_I18N_HYDRATION_ENABLED, PRESERVE_HOST_CONTENT} from './tokens';
 import {enableRetrieveHydrationInfoImpl, NGH_DATA_KEY, SSR_CONTENT_INTEGRITY_MARKER} from './utils';
 import {enableFindMatchingDehydratedViewImpl} from './views';
@@ -36,9 +37,14 @@ import {enableFindMatchingDehydratedViewImpl} from './views';
 let isHydrationSupportEnabled = false;
 
 /**
- * Indicates whether support for hydrating i18n blocks is enabled.
+ * Indicates whether the i18n-related code was added,
+ * prevents adding it multiple times.
+ *
+ * Note: This merely controls whether the code is loaded,
+ * while `setIsI18nHydrationSupportEnabled` determines
+ * whether i18n blocks are serialized or hydrated.
  */
-let _isI18nHydrationSupportEnabled = false;
+let isI18nHydrationRuntimeSupportEnabled = false;
 
 /**
  * Defines a period of time that Angular waits for the `ApplicationRef.isStable` to emit `true`.
@@ -68,7 +74,20 @@ function enableHydrationRuntimeSupport() {
     enableLocateOrCreateContainerRefImpl();
     enableFindMatchingDehydratedViewImpl();
     enableApplyRootElementTransformImpl();
+  }
+}
+
+/**
+ * Brings the necessary i18n hydration code in tree-shakable manner.
+ * Similar to `enableHydrationRuntimeSupport`, the code is only
+ * present when `withI18nSupport` is invoked.
+ */
+function enableI18nHydrationRuntimeSupport() {
+  if (!isI18nHydrationRuntimeSupportEnabled) {
+    isI18nHydrationRuntimeSupportEnabled = true;
     enableLocateOrCreateI18nNodeImpl();
+    enablePrepareI18nBlockForHydrationImpl();
+    enableClaimDehydratedIcuCaseImpl();
   }
 }
 
@@ -152,7 +171,9 @@ export function withDomHydration(): EnvironmentProviders {
     {
       provide: ENVIRONMENT_INITIALIZER,
       useValue: () => {
-        _isI18nHydrationSupportEnabled = !!inject(IS_I18N_HYDRATION_ENABLED, {optional: true});
+        // i18n support is enabled by calling withI18nSupport(), but there's
+        // no way to turn it off (e.g. for tests), so we turn it off by default.
+        setIsI18nHydrationSupportEnabled(false);
 
         // Since this function is used across both server and client,
         // make sure that the runtime code is only added when invoked
@@ -188,12 +209,10 @@ export function withDomHydration(): EnvironmentProviders {
             // The timing is similar to when we start the serialization process
             // on the server.
             //
-            // Note: the cleanup task *MUST* be scheduled within the Angular zone
+            // Note: the cleanup task *MUST* be scheduled within the Angular zone in Zone apps
             // to ensure that change detection is properly run afterward.
             whenStableWithTimeout(appRef, injector).then(() => {
-              NgZone.assertInAngularZone();
               cleanupDehydratedViews(appRef);
-
               if (typeof ngDevMode !== 'undefined' && ngDevMode) {
                 printHydrationStats(injector);
               }
@@ -211,20 +230,22 @@ export function withDomHydration(): EnvironmentProviders {
  * Returns a set of providers required to setup support for i18n hydration.
  * Requires hydration to be enabled separately.
  */
-export function withI18nHydration(): EnvironmentProviders {
-  return makeEnvironmentProviders([
+export function withI18nSupport(): Provider[] {
+  return [
     {
       provide: IS_I18N_HYDRATION_ENABLED,
       useValue: true,
     },
-  ]);
-}
-
-/**
- * Returns whether i18n hydration support is enabled.
- */
-export function isI18nHydrationSupportEnabled(): boolean {
-  return _isI18nHydrationSupportEnabled;
+    {
+      provide: ENVIRONMENT_INITIALIZER,
+      useValue: () => {
+        enableI18nHydrationRuntimeSupport();
+        setIsI18nHydrationSupportEnabled(true);
+        performanceMarkFeature('NgI18nHydration');
+      },
+      multi: true,
+    },
+  ];
 }
 
 /**

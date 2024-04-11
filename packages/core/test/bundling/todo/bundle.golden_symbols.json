@@ -603,9 +603,6 @@
     "name": "activeConsumer"
   },
   {
-    "name": "addLViewToLContainer"
-  },
-  {
     "name": "addPropertyBinding"
   },
   {
@@ -871,9 +868,6 @@
   },
   {
     "name": "getBindingsEnabled"
-  },
-  {
-    "name": "getCallbackScheduler"
   },
   {
     "name": "getClosureSafeProperty"
@@ -1155,6 +1149,9 @@
     "name": "isRefreshingViews"
   },
   {
+    "name": "isRootView"
+  },
+  {
     "name": "isStylingMatch"
   },
   {
@@ -1353,6 +1350,9 @@
     "name": "saveResolvedLocalsInData"
   },
   {
+    "name": "scheduleCallback"
+  },
+  {
     "name": "searchTokensOnInjector"
   },
   {
@@ -1419,9 +1419,6 @@
     "name": "shouldAddViewToDom"
   },
   {
-    "name": "shouldRecheckView"
-  },
-  {
     "name": "shouldSearchParent"
   },
   {
@@ -1447,6 +1444,9 @@
   },
   {
     "name": "trackByIdentity"
+  },
+  {
+    "name": "trackMovedView"
   },
   {
     "name": "uniqueIdCounter"

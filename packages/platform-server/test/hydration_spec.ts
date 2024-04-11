@@ -10,13 +10,16 @@ import '@angular/localize/init';
 
 import {CommonModule, DOCUMENT, isPlatformServer, NgComponentOutlet, NgFor, NgIf, NgTemplateOutlet, PlatformLocation} from '@angular/common';
 import {MockPlatformLocation} from '@angular/common/testing';
-import {afterRender, ApplicationRef, Component, ComponentRef, ContentChildren, createComponent, destroyPlatform, Directive, ElementRef, EnvironmentInjector, ErrorHandler, getPlatform, inject, Injectable, Input, NgZone, PLATFORM_ID, Provider, QueryList, TemplateRef, Type, ViewChild, ViewContainerRef, ViewEncapsulation, ɵsetDocument, ɵwhenStable as whenStable, ɵwithI18nHydration as withI18nHydration} from '@angular/core';
+import {computeMsgId} from '@angular/compiler';
+import {afterRender, ApplicationRef, Component, ComponentRef, ContentChildren, createComponent, destroyPlatform, Directive, ElementRef, EnvironmentInjector, ErrorHandler, getPlatform, inject, Injectable, Input, NgZone, PLATFORM_ID, Provider, QueryList, TemplateRef, Type, ViewChild, viewChild, ViewContainerRef, ViewEncapsulation, ɵsetDocument, ɵwhenStable as whenStable} from '@angular/core';
 import {Console} from '@angular/core/src/console';
 import {HydrationStatus, readHydrationInfo, SSR_CONTENT_INTEGRITY_MARKER} from '@angular/core/src/hydration/utils';
 import {getComponentDef} from '@angular/core/src/render3/definition';
 import {NoopNgZone} from '@angular/core/src/zone/ng_zone';
 import {TestBed} from '@angular/core/testing';
-import {bootstrapApplication, HydrationFeature, HydrationFeatureKind, provideClientHydration} from '@angular/platform-browser';
+import {clearTranslations, loadTranslations} from '@angular/localize';
+import {bootstrapApplication, HydrationFeature, provideClientHydration, withI18nSupport} from '@angular/platform-browser';
+import {HydrationFeatureKind} from '@angular/platform-browser/src/hydration';
 import {provideRouter, RouterOutlet, Routes} from '@angular/router';
 
 import {provideServerRendering} from '../public_api';
@@ -266,13 +269,18 @@ describe('platform-server hydration integration', () => {
      * @param envProviders the environment providers
      * @returns a promise containing the server rendered app as a string
      */
-    async function ssr(
-        component: Type<unknown>, doc?: string, envProviders?: Provider[],
-        hydrationFeatures: HydrationFeature<HydrationFeatureKind>[] = [],
-        enableHydration = true): Promise<string> {
+    async function ssr(component: Type<unknown>, options?: {
+      doc?: string,
+      envProviders?: Provider[],
+      hydrationFeatures?: HydrationFeature<HydrationFeatureKind>[],
+      enableHydration?: boolean,
+    }): Promise<string> {
       const defaultHtml = '<html><head></head><body><app></app></body></html>';
+      const enableHydration = options?.enableHydration ?? true;
+      const envProviders = options?.envProviders ?? [];
+      const hydrationFeatures = options?.hydrationFeatures ?? [];
       const providers = [
-        ...(envProviders ?? []),
+        ...envProviders,
         provideServerRendering(),
         (enableHydration ? provideClientHydration(...hydrationFeatures) : []),
       ];
@@ -280,7 +288,7 @@ describe('platform-server hydration integration', () => {
       const bootstrap = () => bootstrapApplication(component, {providers});
 
       return renderApplication(bootstrap, {
-        document: doc ?? defaultHtml,
+        document: options?.doc ?? defaultHtml,
       });
     }
 
@@ -293,9 +301,10 @@ describe('platform-server hydration integration', () => {
      * @param envProviders the environment providers
      * @returns a promise with the application ref
      */
-    async function hydrate(
-        html: string, component: Type<unknown>, envProviders?: Provider[],
-        hydrationFeatures: HydrationFeature<HydrationFeatureKind>[] = []): Promise<ApplicationRef> {
+    async function hydrate(html: string, component: Type<unknown>, options?: {
+      envProviders?: Provider[],
+      hydrationFeatures?: HydrationFeature<HydrationFeatureKind>[],
+    }): Promise<ApplicationRef> {
       // Get HTML contents of the `<app>`, create a DOM element and append it into the body.
       const container = convertHtmlToDom(html, doc);
       Array.from(container.childNodes).forEach(node => doc.body.appendChild(node));
@@ -306,8 +315,10 @@ describe('platform-server hydration integration', () => {
         return doc;
       }
 
+      const envProviders = options?.envProviders ?? [];
+      const hydrationFeatures = options?.hydrationFeatures ?? [];
       const providers = [
-        ...(envProviders ?? []),
+        ...envProviders,
         {provide: DOCUMENT, useFactory: _document, deps: []},
         provideClientHydration(...hydrationFeatures),
       ];
@@ -410,7 +421,7 @@ describe('platform-server hydration integration', () => {
 
         const extraChildNodes = '<!--comment--> Some text! <b>and a tag</b>';
         const doc = `<html><head></head><body><app>${extraChildNodes}</app></body></html>`;
-        const html = await ssr(SimpleComponent, doc);
+        const html = await ssr(SimpleComponent, {doc});
         const ssrContents = getAppContents(html);
 
         // We expect that the existing content of the host node is fully removed.
@@ -620,7 +631,7 @@ describe('platform-server hydration integration', () => {
 
           resetTViewsFor(SimpleComponent, NestedComponent);
 
-          const appRef = await hydrate(html, SimpleComponent, [withDebugConsole()]);
+          const appRef = await hydrate(html, SimpleComponent, {envProviders: [withDebugConsole()]});
           const compRef = getComponentRef<SimpleComponent>(appRef);
           appRef.tick();
 
@@ -678,7 +689,7 @@ describe('platform-server hydration integration', () => {
 
           const extraChildNodes = '<!--comment--> Some text! <b>and a tag</b>';
           const doc = `<html><head></head><body><app>${extraChildNodes}</app></body></html>`;
-          const html = await ssr(SimpleComponent, doc);
+          const html = await ssr(SimpleComponent, {doc});
           const ssrContents = getAppContents(html);
 
           expect(ssrContents).toContain(`<app ${NGH_ATTR_NAME}`);
@@ -1674,7 +1685,7 @@ describe('platform-server hydration integration', () => {
                    '<app></app>' +
                    '<div id="dynamic-cmp-target"></div>' +
                    '</body></html>';
-               const html = await ssr(SimpleComponent, indexHtml);
+               const html = await ssr(SimpleComponent, {doc: indexHtml});
                const ssrContents = getAppContents(html);
 
                expect(ssrContents).toContain('<app ngh');
@@ -2003,6 +2014,10 @@ describe('platform-server hydration integration', () => {
 
     describe('i18n', () => {
       describe('support is enabled', () => {
+        afterEach(() => {
+          clearTranslations();
+        });
+
         it('should not append skip hydration flag if component uses i18n blocks', async () => {
           @Component({
             standalone: true,
@@ -2014,8 +2029,8 @@ describe('platform-server hydration integration', () => {
           class SimpleComponent {
           }
 
-          const providers = [withI18nHydration()] as unknown as Provider[];
-          const html = await ssr(SimpleComponent, undefined, providers);
+          const hydrationFeatures = [withI18nSupport()] as unknown as HydrationFeature<any>[];
+          const html = await ssr(SimpleComponent, {hydrationFeatures});
           const ssrContents = getAppContents(html);
           expect(ssrContents).toContain('<app ngh');
         });
@@ -2035,8 +2050,8 @@ describe('platform-server hydration integration', () => {
              class SimpleComponent {
              }
 
-             const providers = [withI18nHydration()] as unknown as Provider[];
-             const html = await ssr(SimpleComponent, undefined, providers);
+             const hydrationFeatures = [withI18nSupport()] as unknown as HydrationFeature<any>[];
+             const html = await ssr(SimpleComponent, {hydrationFeatures});
              const ssrContents = getAppContents(html);
              expect(ssrContents).toContain('<app ngh');
            });
@@ -2053,8 +2068,8 @@ describe('platform-server hydration integration', () => {
              class SimpleComponent {
              }
 
-             const providers = [withI18nHydration()] as unknown as Provider[];
-             const html = await ssr(SimpleComponent, undefined, providers);
+             const hydrationFeatures = [withI18nSupport()] as unknown as HydrationFeature<any>[];
+             const html = await ssr(SimpleComponent, {hydrationFeatures});
              const ssrContents = getAppContents(html);
              expect(ssrContents).toContain('<app ngh');
            });
@@ -2072,11 +2087,488 @@ describe('platform-server hydration integration', () => {
              class SimpleComponent {
              }
 
-             const providers = [withI18nHydration()] as unknown as Provider[];
-             const html = await ssr(SimpleComponent, undefined, providers);
+             const hydrationFeatures = [withI18nSupport()] as unknown as HydrationFeature<any>[];
+             const html = await ssr(SimpleComponent, {hydrationFeatures});
              const ssrContents = getAppContents(html);
              expect(ssrContents).toContain('<app ngh');
            });
+
+        it('should support translations that do not include every placeholder', async () => {
+          loadTranslations({
+            [computeMsgId('Some {$START_TAG_STRONG}strong{$CLOSE_TAG_STRONG} content')]:
+                'Some normal content'
+          });
+
+          @Component({
+            standalone: true,
+            selector: 'app',
+            template: `<div i18n>Some <strong>strong</strong> content</div>`,
+          })
+          class SimpleComponent {
+          }
+
+          const hydrationFeatures = [withI18nSupport()] as unknown as HydrationFeature<any>[];
+          const html = await ssr(SimpleComponent, {hydrationFeatures});
+          const ssrContents = getAppContents(html);
+          expect(ssrContents).toContain('<app ngh');
+
+          resetTViewsFor(SimpleComponent);
+
+          const appRef = await hydrate(html, SimpleComponent, {hydrationFeatures});
+          const compRef = getComponentRef<SimpleComponent>(appRef);
+          appRef.tick();
+
+          const clientRootNode = compRef.location.nativeElement;
+          verifyAllNodesClaimedForHydration(clientRootNode);
+          verifyClientAndSSRContentsMatch(ssrContents, clientRootNode);
+
+          const div = clientRootNode.querySelector('div');
+          expect(div.innerHTML).toBe('Some normal content');
+        });
+
+        it('should support projecting translated content', async () => {
+          @Component({
+            standalone: true,
+            selector: 'app-content',
+            template:
+                `<ng-content select="span"></ng-content><ng-content select="div"></ng-content>`
+          })
+          class ContentComponent {
+          }
+
+          @Component({
+            standalone: true,
+            selector: 'app',
+            template: `<div i18n><app-content><div>one</div><span>two</span></app-content></div>`,
+            imports: [ContentComponent],
+          })
+          class SimpleComponent {
+          }
+
+          const hydrationFeatures = [withI18nSupport()] as unknown as HydrationFeature<any>[];
+          const html = await ssr(SimpleComponent, {hydrationFeatures});
+          const ssrContents = getAppContents(html);
+          expect(ssrContents).toContain('<app ngh');
+
+          resetTViewsFor(SimpleComponent, ContentComponent);
+
+          const appRef = await hydrate(html, SimpleComponent, {hydrationFeatures});
+          const compRef = getComponentRef<SimpleComponent>(appRef);
+          appRef.tick();
+
+          const clientRootNode = compRef.location.nativeElement;
+          verifyAllNodesClaimedForHydration(clientRootNode);
+          verifyClientAndSSRContentsMatch(ssrContents, clientRootNode);
+
+          const content = clientRootNode.querySelector('app-content');
+          expect(content.innerHTML).toBe('<span>two</span><div>one</div>');
+        });
+
+        it('should support hosting projected content', async () => {
+          @Component({
+            standalone: true,
+            selector: 'app-content',
+            template: `<span i18n>Start <ng-content /> End</span>`
+          })
+          class ContentComponent {
+          }
+
+          @Component({
+            standalone: true,
+            selector: 'app',
+            template: `<div><app-content>Middle</app-content></div>`,
+            imports: [ContentComponent],
+          })
+          class SimpleComponent {
+          }
+
+          const hydrationFeatures = [withI18nSupport()] as unknown as HydrationFeature<any>[];
+          const html = await ssr(SimpleComponent, {hydrationFeatures});
+          const ssrContents = getAppContents(html);
+          expect(ssrContents).toContain('<app ngh');
+
+          resetTViewsFor(SimpleComponent, ContentComponent);
+
+          const appRef = await hydrate(html, SimpleComponent, {hydrationFeatures});
+          const compRef = getComponentRef<SimpleComponent>(appRef);
+          appRef.tick();
+
+          const clientRootNode = compRef.location.nativeElement;
+          verifyAllNodesClaimedForHydration(clientRootNode);
+          verifyClientAndSSRContentsMatch(ssrContents, clientRootNode);
+
+          const div = clientRootNode.querySelector('div');
+          expect(div.innerHTML).toBe('<app-content><span>Start Middle End</span></app-content>');
+        });
+
+        it('should support using translated views as view container anchors', async () => {
+          @Component({
+            standalone: true,
+            selector: 'dynamic-cmp',
+            template: `DynamicComponent content`,
+          })
+          class DynamicComponent {
+          }
+
+          @Component({
+            standalone: true,
+            selector: 'app',
+            template: `<div i18n><div #target>one</div><span>two</span></div>`,
+          })
+          class SimpleComponent {
+            @ViewChild('target', {read: ViewContainerRef}) vcr!: ViewContainerRef;
+
+            ngAfterViewInit() {
+              const compRef = this.vcr.createComponent(DynamicComponent);
+              compRef.changeDetectorRef.detectChanges();
+            }
+          }
+
+          const hydrationFeatures = [withI18nSupport()] as unknown as HydrationFeature<any>[];
+          const html = await ssr(SimpleComponent, {hydrationFeatures});
+          const ssrContents = getAppContents(html);
+          expect(ssrContents).toContain('<app ngh');
+
+          resetTViewsFor(SimpleComponent, DynamicComponent);
+
+          const appRef = await hydrate(html, SimpleComponent, {hydrationFeatures});
+          const compRef = getComponentRef<SimpleComponent>(appRef);
+          appRef.tick();
+
+          const clientRootNode = compRef.location.nativeElement;
+          verifyAllNodesClaimedForHydration(clientRootNode);
+          verifyClientAndSSRContentsMatch(ssrContents, clientRootNode);
+
+          const div = clientRootNode.querySelector('div');
+          const clientContents = stripExcessiveSpaces(stripUtilAttributes(div.innerHTML, false));
+          expect(clientContents)
+              .toBe(
+                  '<div>one</div><dynamic-cmp>DynamicComponent content</dynamic-cmp><!--container--><span>two</span>');
+        });
+
+        it('should support translations that reorder placeholders', async () => {
+          loadTranslations({
+            [computeMsgId(
+                '{$START_TAG_DIV}one{$CLOSE_TAG_DIV}{$START_TAG_SPAN}two{$CLOSE_TAG_SPAN}')]:
+                '{$START_TAG_SPAN}dos{$CLOSE_TAG_SPAN}{$START_TAG_DIV}uno{$CLOSE_TAG_DIV}'
+          });
+
+          @Component({
+            standalone: true,
+            selector: 'app',
+            template: `<div i18n><div>one</div><span>two</span></div>`,
+          })
+          class SimpleComponent {
+          }
+
+          const hydrationFeatures = [withI18nSupport()] as unknown as HydrationFeature<any>[];
+          const html = await ssr(SimpleComponent, {hydrationFeatures});
+          const ssrContents = getAppContents(html);
+          expect(ssrContents).toContain('<app ngh');
+
+          resetTViewsFor(SimpleComponent);
+
+          const appRef = await hydrate(html, SimpleComponent, {hydrationFeatures});
+          const compRef = getComponentRef<SimpleComponent>(appRef);
+          appRef.tick();
+
+          const clientRootNode = compRef.location.nativeElement;
+          verifyAllNodesClaimedForHydration(clientRootNode);
+          verifyClientAndSSRContentsMatch(ssrContents, clientRootNode);
+
+          const div = clientRootNode.querySelector('div');
+          expect(div.innerHTML).toBe('<span>dos</span><div>uno</div>');
+        });
+
+        it('should support translations that include additional elements', async () => {
+          loadTranslations({
+            [computeMsgId('{VAR_PLURAL, plural, other {normal}}')]:
+                '{VAR_PLURAL, plural, other {<strong>strong</strong>}}'
+          });
+
+          @Component({
+            standalone: true,
+            selector: 'app',
+            template: `<div i18n>Some {case, plural, other {normal}} content</div>`,
+          })
+          class SimpleComponent {
+            case = 0;
+          }
+
+          const hydrationFeatures = [withI18nSupport()] as unknown as HydrationFeature<any>[];
+          const html = await ssr(SimpleComponent, {hydrationFeatures});
+          const ssrContents = getAppContents(html);
+          expect(ssrContents).toContain('<app ngh');
+
+          resetTViewsFor(SimpleComponent);
+
+          const appRef = await hydrate(html, SimpleComponent, {hydrationFeatures});
+          const compRef = getComponentRef<SimpleComponent>(appRef);
+          appRef.tick();
+
+          const clientRootNode = compRef.location.nativeElement;
+          verifyAllNodesClaimedForHydration(clientRootNode);
+          verifyClientAndSSRContentsMatch(ssrContents, clientRootNode);
+
+          const div = clientRootNode.querySelector('div');
+          expect(div.innerHTML).toMatch(/Some <strong>strong<\/strong><!--ICU 26:0--> content/);
+        });
+
+        it('should support translations that remove elements', async () => {
+          loadTranslations(
+              {[computeMsgId('Hello {$START_TAG_STRONG}World{$CLOSE_TAG_STRONG}!')]: 'Bonjour!'});
+
+          @Component({
+            standalone: true,
+            selector: 'app',
+            template: `<div i18n>Hello <strong>World</strong>!</div>`,
+          })
+          class SimpleComponent {
+          }
+
+          const hydrationFeatures = [withI18nSupport()] as unknown as HydrationFeature<any>[];
+          const html = await ssr(SimpleComponent, {hydrationFeatures});
+          const ssrContents = getAppContents(html);
+          expect(ssrContents).toContain('<app ngh');
+
+          resetTViewsFor(SimpleComponent);
+
+          const appRef = await hydrate(html, SimpleComponent, {hydrationFeatures});
+          const compRef = getComponentRef<SimpleComponent>(appRef);
+          appRef.tick();
+
+          const clientRootNode = compRef.location.nativeElement;
+          verifyAllNodesClaimedForHydration(clientRootNode);
+          verifyClientAndSSRContentsMatch(ssrContents, clientRootNode);
+
+          const div = clientRootNode.querySelector('div');
+          expect(div.innerHTML).toMatch(/Bonjour!/);
+        });
+
+        it('should cleanup dehydrated ICU cases', async () => {
+          @Component({
+            standalone: true,
+            selector: 'app',
+            template:
+                `<div i18n>{isServer, select, true { This is a SERVER-ONLY content } false { This is a CLIENT-ONLY content }}</div>`,
+          })
+          class SimpleComponent {
+            isServer = isPlatformServer(inject(PLATFORM_ID)) + '';
+          }
+
+          const hydrationFeatures = [withI18nSupport()] as unknown as HydrationFeature<any>[];
+          const html = await ssr(SimpleComponent, {hydrationFeatures});
+          let ssrContents = getAppContents(html);
+          expect(ssrContents).toContain('<app ngh');
+
+          resetTViewsFor(SimpleComponent);
+
+          const appRef = await hydrate(html, SimpleComponent, {hydrationFeatures});
+          const compRef = getComponentRef<SimpleComponent>(appRef);
+          appRef.tick();
+
+          ssrContents = stripExcessiveSpaces(stripUtilAttributes(ssrContents, false));
+
+          // In the SSR output we expect to see SERVER content, but not CLIENT.
+          expect(ssrContents).not.toContain('This is a CLIENT-ONLY content');
+          expect(ssrContents).toContain('This is a SERVER-ONLY content');
+
+          const clientRootNode = compRef.location.nativeElement;
+
+          await whenStable(appRef);
+
+          const clientContents =
+              stripExcessiveSpaces(stripUtilAttributes(clientRootNode.outerHTML, false));
+
+          // After the cleanup, we expect to see CLIENT content, but not SERVER.
+          expect(clientContents).toContain('This is a CLIENT-ONLY content');
+          expect(clientContents).not.toContain('This is a SERVER-ONLY content');
+        });
+
+        it('should hydrate ICUs (simple)', async () => {
+          @Component({
+            standalone: true,
+            selector: 'app',
+            template:
+                `<div i18n>{{firstCase}} {firstCase, plural, =1 {item} other {items}}, {{secondCase}} {secondCase, plural, =1 {item} other {items}}</div>`,
+          })
+          class SimpleComponent {
+            firstCase = 0;
+            secondCase = 1;
+          }
+
+          const hydrationFeatures = [withI18nSupport()] as unknown as HydrationFeature<any>[];
+          const html = await ssr(SimpleComponent, {hydrationFeatures});
+          const ssrContents = getAppContents(html);
+          expect(ssrContents).toContain('<app ngh');
+
+          resetTViewsFor(SimpleComponent);
+
+          const appRef = await hydrate(html, SimpleComponent, {hydrationFeatures});
+          const compRef = getComponentRef<SimpleComponent>(appRef);
+          appRef.tick();
+
+          const clientRootNode = compRef.location.nativeElement;
+          verifyAllNodesClaimedForHydration(clientRootNode);
+          verifyClientAndSSRContentsMatch(ssrContents, clientRootNode);
+
+          const div = clientRootNode.querySelector('div');
+          expect(div.textContent).toBe('0 items, 1 item');
+        });
+
+        it('should hydrate ICUs (nested)', async () => {
+          @Component({
+            standalone: true,
+            selector: 'simple-component',
+            template:
+                `<div i18n>{firstCase, select, 1 {one-{secondCase, select, 1 {one} 2 {two}}} 2 {two-{secondCase, select, 1 {one} 2 {two}}}}</div>`,
+          })
+          class SimpleComponent {
+            @Input() firstCase!: number;
+            @Input() secondCase!: number;
+          }
+
+          @Component({
+            standalone: true,
+            imports: [SimpleComponent],
+            selector: 'app',
+            template: `
+                <simple-component id="one" firstCase="1" secondCase="1"></simple-component>
+                <simple-component id="two" firstCase="1" secondCase="2"></simple-component>
+                <simple-component id="three" firstCase="2" secondCase="1"></simple-component>
+                <simple-component id="four" firstCase="2" secondCase="2"></simple-component>
+              `
+          })
+          class AppComponent {
+          }
+
+          const hydrationFeatures = [withI18nSupport()] as unknown as HydrationFeature<any>[];
+          const html = await ssr(AppComponent, {hydrationFeatures});
+          const ssrContents = getAppContents(html);
+          expect(ssrContents).toContain('<app ngh');
+
+          resetTViewsFor(AppComponent);
+
+          const appRef = await hydrate(html, AppComponent, {hydrationFeatures});
+          const compRef = getComponentRef<AppComponent>(appRef);
+          appRef.tick();
+
+          const clientRootNode = compRef.location.nativeElement;
+          verifyAllNodesClaimedForHydration(clientRootNode);
+          verifyClientAndSSRContentsMatch(ssrContents, clientRootNode);
+
+          expect(clientRootNode.querySelector('#one').textContent).toBe('one-one');
+          expect(clientRootNode.querySelector('#two').textContent).toBe('one-two');
+          expect(clientRootNode.querySelector('#three').textContent).toBe('two-one');
+          expect(clientRootNode.querySelector('#four').textContent).toBe('two-two');
+        });
+
+        it('should hydrate containers', async () => {
+          @Component({
+            standalone: true,
+            selector: 'app',
+            template: `
+                <ng-container i18n>
+                  Container #1
+                </ng-container>
+                <ng-container i18n>
+                  Container #2
+                </ng-container>
+              `,
+          })
+          class SimpleComponent {
+          }
+
+          const hydrationFeatures = [withI18nSupport()] as unknown as HydrationFeature<any>[];
+          const html = await ssr(SimpleComponent, {hydrationFeatures});
+          const ssrContents = getAppContents(html);
+          expect(ssrContents).toContain('<app ngh');
+
+          resetTViewsFor(SimpleComponent);
+
+          const appRef = await hydrate(html, SimpleComponent, {hydrationFeatures});
+          const compRef = getComponentRef<SimpleComponent>(appRef);
+          appRef.tick();
+
+          const clientRootNode = compRef.location.nativeElement;
+          verifyAllNodesClaimedForHydration(clientRootNode);
+          verifyClientAndSSRContentsMatch(ssrContents, clientRootNode);
+
+          const clientContents = stripExcessiveSpaces(clientRootNode.innerHTML);
+          expect(clientContents)
+              .toBe(' Container #1 <!--ng-container--> Container #2 <!--ng-container-->');
+        });
+
+        it('should hydrate when using the *ngFor directive', async () => {
+          @Component({
+            standalone: true,
+            imports: [NgFor],
+            selector: 'app',
+            template: `
+                <ol i18n>
+                  <li *ngFor="let item of items">{{ item }}</li>
+                </ol>
+              `,
+          })
+          class SimpleComponent {
+            items = [1, 2, 3];
+          }
+
+          const hydrationFeatures = [withI18nSupport()] as unknown as HydrationFeature<any>[];
+          const html = await ssr(SimpleComponent, {hydrationFeatures});
+          const ssrContents = getAppContents(html);
+          expect(ssrContents).toContain('<app ngh');
+
+          resetTViewsFor(SimpleComponent);
+
+          const appRef = await hydrate(html, SimpleComponent, {hydrationFeatures});
+          const compRef = getComponentRef<SimpleComponent>(appRef);
+          appRef.tick();
+
+          const clientRootNode = compRef.location.nativeElement;
+          verifyAllNodesClaimedForHydration(clientRootNode);
+          verifyClientAndSSRContentsMatch(ssrContents, clientRootNode);
+
+          const clientContents = stripExcessiveSpaces(clientRootNode.innerHTML);
+          expect(clientContents)
+              .toBe(
+                  '<ol><li>1</li><li>2</li><li>3</li><!--bindings={ "ng-reflect-ng-for-of": "1,2,3" }--></ol>');
+        });
+
+        it('should hydrate when using @for control flow', async () => {
+          @Component({
+            standalone: true,
+            selector: 'app',
+            template: `
+                <ol i18n>
+                  @for (item of items; track $index) {
+                    <li>{{ item }}</li>
+                  }
+                </ol>
+              `,
+          })
+          class SimpleComponent {
+            items = [1, 2, 3];
+          }
+
+          const hydrationFeatures = [withI18nSupport()] as unknown as HydrationFeature<any>[];
+          const html = await ssr(SimpleComponent, {hydrationFeatures});
+          const ssrContents = getAppContents(html);
+          expect(ssrContents).toContain('<app ngh');
+
+          resetTViewsFor(SimpleComponent);
+
+          const appRef = await hydrate(html, SimpleComponent, {hydrationFeatures});
+          const compRef = getComponentRef<SimpleComponent>(appRef);
+          appRef.tick();
+
+          const clientRootNode = compRef.location.nativeElement;
+          verifyAllNodesClaimedForHydration(clientRootNode);
+          verifyClientAndSSRContentsMatch(ssrContents, clientRootNode);
+
+          const clientContents = stripExcessiveSpaces(clientRootNode.innerHTML);
+          expect(clientContents).toBe('<ol><li>1</li><li>2</li><li>3</li><!--container--></ol>');
+        });
       });
 
       // Note: hydration for i18n blocks is not *yet* fully supported, so the tests
@@ -2555,7 +3047,7 @@ describe('platform-server hydration integration', () => {
           useClass: CustomErrorHandler,
         }];
 
-        const html = await ssr(SimpleComponent, undefined, envProviders);
+        const html = await ssr(SimpleComponent, {envProviders});
         const ssrContents = getAppContents(html);
         expect(ssrContents).toContain('<app ngh');
         expect(ssrContents).toContain('Placeholder');
@@ -2851,7 +3343,7 @@ describe('platform-server hydration integration', () => {
            const indexHtml = '<html><head></head><body>' +
                '<app ngSkipHydration></app>' +
                '</body></html>';
-           const html = await ssr(SimpleComponent, indexHtml);
+           const html = await ssr(SimpleComponent, {doc: indexHtml});
            const ssrContents = getAppContents(html);
 
            // No `ngh` attribute in the <app> element.
@@ -3395,7 +3887,8 @@ describe('platform-server hydration integration', () => {
 
            resetTViewsFor(SimpleComponent, NestedComponent);
 
-           const appRef = await hydrate(html, SimpleComponent, [withDebugConsole()]);
+           const appRef =
+               await hydrate(html, SimpleComponent, {envProviders: [withDebugConsole()]});
            const compRef = getComponentRef<SimpleComponent>(appRef);
            appRef.tick();
 
@@ -4299,7 +4792,7 @@ describe('platform-server hydration integration', () => {
 
         resetTViewsFor(SimpleComponent, ProjectorCmp);
 
-        const appRef = await hydrate(html, SimpleComponent, [withDebugConsole()]);
+        const appRef = await hydrate(html, SimpleComponent, {envProviders: [withDebugConsole()]});
         const compRef = getComponentRef<SimpleComponent>(appRef);
         appRef.tick();
 
@@ -5647,10 +6140,12 @@ describe('platform-server hydration integration', () => {
 
         resetTViewsFor(SimpleComponent);
 
-        const appRef = await hydrate(html, SimpleComponent, [
-          {provide: NgZone, useValue: new NoopNgZone()},
-          withDebugConsole(),
-        ]);
+        const appRef = await hydrate(html, SimpleComponent, {
+          envProviders: [
+            {provide: NgZone, useValue: new NoopNgZone()},
+            withDebugConsole(),
+          ]
+        });
         const compRef = getComponentRef<SimpleComponent>(appRef);
         appRef.tick();
 
@@ -5683,10 +6178,12 @@ describe('platform-server hydration integration', () => {
 
         class CustomNgZone extends NgZone {}
 
-        const appRef = await hydrate(html, SimpleComponent, [
-          {provide: NgZone, useValue: new CustomNgZone({})},
-          withDebugConsole(),
-        ]);
+        const appRef = await hydrate(html, SimpleComponent, {
+          envProviders: [
+            {provide: NgZone, useValue: new CustomNgZone({})},
+            withDebugConsole(),
+          ]
+        });
         const compRef = getComponentRef<SimpleComponent>(appRef);
         appRef.tick();
 
@@ -5726,7 +6223,9 @@ describe('platform-server hydration integration', () => {
 
         resetTViewsFor(SimpleComponent);
 
-        await hydrate(html, SimpleComponent, withNoopErrorHandler()).catch((err: unknown) => {
+        await hydrate(html, SimpleComponent, {
+          envProviders: [withNoopErrorHandler()]
+        }).catch((err: unknown) => {
           const message = (err as Error).message;
           expect(message).toContain(
               'During hydration Angular expected a text node but found <span>');
@@ -5764,7 +6263,9 @@ describe('platform-server hydration integration', () => {
 
         resetTViewsFor(SimpleComponent);
 
-        await hydrate(html, SimpleComponent, withNoopErrorHandler()).catch((err: unknown) => {
+        await hydrate(html, SimpleComponent, {
+          envProviders: withNoopErrorHandler()
+        }).catch((err: unknown) => {
           const message = (err as Error).message;
           expect(message).toContain(
               'During hydration Angular expected <div> but the node was not found');
@@ -5802,7 +6303,9 @@ describe('platform-server hydration integration', () => {
 
         resetTViewsFor(SimpleComponent);
 
-        await hydrate(html, SimpleComponent, withNoopErrorHandler()).catch((err: unknown) => {
+        await hydrate(html, SimpleComponent, {
+          envProviders: [withNoopErrorHandler()]
+        }).catch((err: unknown) => {
           const message = (err as Error).message;
           expect(message).toContain('During hydration Angular expected <b> but found <span>');
           expect(message).toContain('<b>…</b>  <-- AT THIS LOCATION');
@@ -5839,7 +6342,9 @@ describe('platform-server hydration integration', () => {
 
         resetTViewsFor(SimpleComponent);
 
-        await hydrate(html, SimpleComponent, withNoopErrorHandler()).catch((err: unknown) => {
+        await hydrate(html, SimpleComponent, {
+          envProviders: [withNoopErrorHandler()]
+        }).catch((err: unknown) => {
           const message = (err as Error).message;
           expect(message).toContain(
               'During hydration Angular expected a comment node but found <span>');
@@ -5879,7 +6384,9 @@ describe('platform-server hydration integration', () => {
 
            resetTViewsFor(SimpleComponent);
 
-           await hydrate(html, SimpleComponent, withNoopErrorHandler()).catch((err: unknown) => {
+           await hydrate(html, SimpleComponent, {
+             envProviders: [withNoopErrorHandler()]
+           }).catch((err: unknown) => {
              const message = (err as Error).message;
              expect(message).toContain(
                  'During hydration Angular expected a comment node but found <span>');
@@ -5916,7 +6423,9 @@ describe('platform-server hydration integration', () => {
 
         resetTViewsFor(SimpleComponent);
 
-        await hydrate(html, SimpleComponent, withNoopErrorHandler()).catch((err: unknown) => {
+        await hydrate(html, SimpleComponent, {
+          envProviders: [withNoopErrorHandler()]
+        }).catch((err: unknown) => {
           const message = (err as Error).message;
           expect(message).toContain(
               'During hydration Angular expected a comment node but found <span>');
@@ -5963,7 +6472,9 @@ describe('platform-server hydration integration', () => {
 
         resetTViewsFor(SimpleComponent);
 
-        await hydrate(html, SimpleComponent, withNoopErrorHandler()).catch((err: unknown) => {
+        await hydrate(html, SimpleComponent, {
+          envProviders: [withNoopErrorHandler()]
+        }).catch((err: unknown) => {
           const message = (err as Error).message;
           expect(message).toContain(
               'During hydration Angular expected a comment node but found <span>');
@@ -6002,7 +6513,9 @@ describe('platform-server hydration integration', () => {
 
         resetTViewsFor(SimpleComponent);
 
-        await hydrate(html, SimpleComponent, withNoopErrorHandler()).catch((err: unknown) => {
+        await hydrate(html, SimpleComponent, {
+          envProviders: [withNoopErrorHandler()]
+        }).catch((err: unknown) => {
           const message = (err as Error).message;
           expect(message).toContain(
               'During hydration Angular expected more sibling nodes to be present');
@@ -6046,7 +6559,9 @@ describe('platform-server hydration integration', () => {
 
         resetTViewsFor(SimpleComponent);
 
-        await hydrate(html, SimpleComponent, withNoopErrorHandler()).catch((err: unknown) => {
+        await hydrate(html, SimpleComponent, {
+          envProviders: [withNoopErrorHandler()]
+        }).catch((err: unknown) => {
           const message = (err as Error).message;
           expect(message).toContain(
               'During hydration Angular expected a comment node but found <span>');
@@ -6092,7 +6607,9 @@ describe('platform-server hydration integration', () => {
 
            resetTViewsFor(SimpleComponent);
 
-           await hydrate(html, SimpleComponent, withNoopErrorHandler()).catch((err: unknown) => {
+           await hydrate(html, SimpleComponent, {
+             envProviders: [withNoopErrorHandler()]
+           }).catch((err: unknown) => {
              const message = (err as Error).message;
              expect(message).toContain(
                  'During hydration Angular expected a comment node but found <span>');
@@ -6130,7 +6647,9 @@ describe('platform-server hydration integration', () => {
           }
         }
 
-        await ssr(SimpleComponent, undefined, withNoopErrorHandler()).catch((err: unknown) => {
+        await ssr(SimpleComponent, {
+          envProviders: [withNoopErrorHandler()]
+        }).catch((err: unknown) => {
           const message = (err as Error).message;
           expect(message).toContain(
               'During serialization, Angular was unable to find an element in the DOM');
@@ -6176,7 +6695,9 @@ describe('platform-server hydration integration', () => {
 
         resetTViewsFor(SimpleComponent);
 
-        await hydrate(html, SimpleComponent, withNoopErrorHandler()).catch((err: unknown) => {
+        await hydrate(html, SimpleComponent, {
+          envProviders: [withNoopErrorHandler()]
+        }).catch((err: unknown) => {
           const message = (err as Error).message;
           expect(message).toContain(
               'During hydration Angular was unable to locate a node using the "firstChild" path, ' +
@@ -6237,14 +6758,15 @@ describe('platform-server hydration integration', () => {
            }
 
            // Note: SSR *without* hydration logic enabled.
-           const html = await ssr(SimpleComponent, undefined, undefined, undefined, false);
+           const html = await ssr(SimpleComponent, {enableHydration: false});
            const ssrContents = getAppContents(html);
 
            expect(ssrContents).not.toContain('<app ngh');
 
            resetTViewsFor(SimpleComponent);
 
-           const appRef = await hydrate(html, SimpleComponent, [withDebugConsole()]);
+           const appRef =
+               await hydrate(html, SimpleComponent, {envProviders: [withDebugConsole()]});
            const compRef = getComponentRef<SimpleComponent>(appRef);
            appRef.tick();
 
@@ -6817,11 +7339,11 @@ describe('platform-server hydration integration', () => {
         class SimpleComponent {
         }
 
-        const providers = [
+        const envProviders = [
           {provide: PlatformLocation, useClass: MockPlatformLocation},
           provideRouter(routes),
         ] as unknown as Provider[];
-        const html = await ssr(SimpleComponent, undefined, providers);
+        const html = await ssr(SimpleComponent, {envProviders});
         const ssrContents = getAppContents(html);
 
         expect(ssrContents).toContain(`<app ${NGH_ATTR_NAME}`);
@@ -6832,7 +7354,7 @@ describe('platform-server hydration integration', () => {
 
         resetTViewsFor(SimpleComponent, LazyCmp);
 
-        const appRef = await hydrate(html, SimpleComponent, providers);
+        const appRef = await hydrate(html, SimpleComponent, {envProviders});
         const compRef = getComponentRef<SimpleComponent>(appRef);
         appRef.tick();
 

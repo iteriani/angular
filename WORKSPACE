@@ -2,7 +2,6 @@ workspace(
     name = "angular",
     managed_directories = {
         "@npm": ["node_modules"],
-        "@aio_npm": ["aio/node_modules"],
     },
 )
 
@@ -110,30 +109,6 @@ yarn_install(
 )
 
 yarn_install(
-    name = "aio_npm",
-    # Note that we add the postinstall scripts here so that the dependencies are re-installed
-    # when the postinstall patches are modified.
-    data = [
-        YARN_LABEL,
-        "//:.yarnrc",
-        "//:tools/npm-patches/@bazel+jasmine+5.8.1.patch",
-        "//aio:tools/cli-patches/bazel-architect-output.patch",
-        "//aio:tools/cli-patches/patch.js",
-    ],
-    # Currently disabled due to:
-    #  1. Missing Windows support currently.
-    #  2. Incompatibilites with the `ts_library` rule.
-    exports_directories_only = False,
-    manual_build_file_contents = npm_package_archives(),
-    package_json = "//aio:package.json",
-    # We prefer to symlink the `node_modules` to only maintain a single install.
-    # See https://github.com/angular/dev-infra/pull/446#issuecomment-1059820287 for details.
-    symlink_node_modules = True,
-    yarn = YARN_LABEL,
-    yarn_lock = "//aio:yarn.lock",
-)
-
-yarn_install(
     name = "aio_example_deps",
     # Rename the default js_library target from "node_modules" as this obscures the
     # the source directory stamped as a filegroup in the manual BUILD contents below.
@@ -206,10 +181,10 @@ cldr_xml_data_repository(
 # sass rules
 http_archive(
     name = "io_bazel_rules_sass",
-    sha256 = "5633816e996a79c77f44306f6228b9ef18fc2ecb412d63b4e314a132225facba",
-    strip_prefix = "rules_sass-79bd239ce77c101ea1aed575678020bd2999f17d",
+    sha256 = "f6d8058da1bad8d4eac74f3220f74212ad06b355eea6387251f161e0a17e29e3",
+    strip_prefix = "rules_sass-147f7fa5210c89e58c1a4b99245c7daf64c4c8ad",
     urls = [
-        "https://github.com/bazelbuild/rules_sass/archive/79bd239ce77c101ea1aed575678020bd2999f17d.zip",
+        "https://github.com/bazelbuild/rules_sass/archive/147f7fa5210c89e58c1a4b99245c7daf64c4c8ad.zip",
     ],
 )
 

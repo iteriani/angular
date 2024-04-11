@@ -219,9 +219,6 @@
     "name": "IS_HYDRATION_DOM_REUSE_ENABLED"
   },
   {
-    "name": "IS_I18N_HYDRATION_ENABLED"
-  },
-  {
     "name": "InjectFlags"
   },
   {
@@ -379,6 +376,9 @@
   },
   {
     "name": "PLATFORM_INITIALIZER"
+  },
+  {
+    "name": "PLATFORM_SERVER_ID"
   },
   {
     "name": "PRESERVE_HOST_CONTENT"
@@ -636,6 +636,9 @@
     "name": "cleanUpView"
   },
   {
+    "name": "cleanupDehydratedIcuData"
+  },
+  {
     "name": "cleanupLContainer"
   },
   {
@@ -799,9 +802,6 @@
   },
   {
     "name": "generateInitialInputs"
-  },
-  {
-    "name": "getCallbackScheduler"
   },
   {
     "name": "getClosureSafeProperty"
@@ -1263,6 +1263,9 @@
     "name": "scheduleAsyncIterable"
   },
   {
+    "name": "scheduleCallback"
+  },
+  {
     "name": "searchTokensOnInjector"
   },
   {
@@ -1303,9 +1306,6 @@
   },
   {
     "name": "shimStylesContent"
-  },
-  {
-    "name": "shouldRecheckView"
   },
   {
     "name": "shouldSearchParent"

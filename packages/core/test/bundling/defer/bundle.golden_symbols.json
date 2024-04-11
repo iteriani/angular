@@ -585,9 +585,6 @@
     "name": "addDepsToRegistry"
   },
   {
-    "name": "addLViewToLContainer"
-  },
-  {
     "name": "addPropertyBinding"
   },
   {
@@ -835,9 +832,6 @@
   },
   {
     "name": "getBindingsEnabled"
-  },
-  {
-    "name": "getCallbackScheduler"
   },
   {
     "name": "getClosureSafeProperty"
@@ -1417,6 +1411,9 @@
   },
   {
     "name": "init_i18n2"
+  },
+  {
+    "name": "init_i18n3"
   },
   {
     "name": "init_i18n_apply"
@@ -2103,6 +2100,9 @@
     "name": "isRefreshingViews"
   },
   {
+    "name": "isRootView"
+  },
+  {
     "name": "isSubscription"
   },
   {
@@ -2286,6 +2286,9 @@
     "name": "saveResolvedLocalsInData"
   },
   {
+    "name": "scheduleCallback"
+  },
+  {
     "name": "searchTokensOnInjector"
   },
   {
@@ -2340,9 +2343,6 @@
     "name": "shimStylesContent"
   },
   {
-    "name": "shouldRecheckView"
-  },
-  {
     "name": "shouldSearchParent"
   },
   {
@@ -2365,6 +2365,9 @@
   },
   {
     "name": "toRefArray"
+  },
+  {
+    "name": "trackMovedView"
   },
   {
     "name": "uniqueIdCounter"

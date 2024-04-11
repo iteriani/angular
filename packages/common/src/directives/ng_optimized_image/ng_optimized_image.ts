@@ -164,7 +164,7 @@ export interface ImagePlaceholderConfig {
  * - Warns if the image will be visually distorted when rendered
  *
  * @usageNotes
- * The `NgOptimizedImage` directive is marked as [standalone](guide/standalone-components) and can
+ * The `NgOptimizedImage` directive is marked as [standalone](guide/components/importing) and can
  * be imported directly.
  *
  * Follow the steps below to enable and use the directive:
@@ -314,8 +314,7 @@ export class NgOptimizedImage implements OnInit, OnChanges, OnDestroy {
 
   /**
    * For responsive images: the intrinsic height of the image in pixels.
-   * For fixed size images: the desired rendered height of the image in pixels.* The intrinsic
-   * height of the image in pixels.
+   * For fixed size images: the desired rendered height of the image in pixels.
    */
   @Input({transform: numberAttribute}) height: number | undefined;
 

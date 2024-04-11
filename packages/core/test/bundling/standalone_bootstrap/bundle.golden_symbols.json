@@ -657,9 +657,6 @@
     "name": "generateInitialInputs"
   },
   {
-    "name": "getCallbackScheduler"
-  },
-  {
     "name": "getClosureSafeProperty"
   },
   {
@@ -846,6 +843,9 @@
     "name": "isRefreshingViews"
   },
   {
+    "name": "isRootView"
+  },
+  {
     "name": "isSubscription"
   },
   {
@@ -942,6 +942,9 @@
     "name": "parseAndConvertBindingsForDefinition"
   },
   {
+    "name": "performanceMarkFeature"
+  },
+  {
     "name": "processInjectorTypesWithProviders"
   },
   {
@@ -993,6 +996,9 @@
     "name": "saveNameToExportMap"
   },
   {
+    "name": "scheduleCallback"
+  },
+  {
     "name": "searchTokensOnInjector"
   },
   {
@@ -1030,9 +1036,6 @@
   },
   {
     "name": "shimStylesContent"
-  },
-  {
-    "name": "shouldRecheckView"
   },
   {
     "name": "shouldSearchParent"

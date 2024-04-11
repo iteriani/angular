@@ -34,8 +34,8 @@ import {global} from './global';
  *
  * @returns a function to cancel the scheduled callback
  */
-export function getCallbackScheduler(): (callback: Function) => () => void {
-  // Note: the `getNativeRequestAnimationFrame` is used in the `NgZone` class, but we cannot use the
+export function scheduleCallback(callback: Function): () => void {
+  // Note: the `scheduleCallback` is used in the `NgZone` class, but we cannot use the
   // `inject` function. The `NgZone` instance may be created manually, and thus the injection
   // context will be unavailable. This might be enough to check whether `requestAnimationFrame` is
   // available because otherwise, we'll fall back to `setTimeout`.
@@ -43,42 +43,31 @@ export function getCallbackScheduler(): (callback: Function) => () => void {
   let nativeRequestAnimationFrame =
       hasRequestAnimationFrame ? global['requestAnimationFrame'] : null;
   let nativeSetTimeout = global['setTimeout'];
-
   if (typeof Zone !== 'undefined') {
-    // Note: zone.js sets original implementations on patched APIs behind the
-    // `__zone_symbol__OriginalDelegate` key (see `attachOriginToPatched`). Given the following
-    // example: `window.requestAnimationFrame.__zone_symbol__OriginalDelegate`; this would return an
-    // unpatched implementation of the `requestAnimationFrame`, which isn't intercepted by the
-    // Angular zone. We use the unpatched implementation to avoid another change detection when
-    // coalescing tasks.
-    const ORIGINAL_DELEGATE_SYMBOL = (Zone as any).__symbol__('OriginalDelegate');
-    if (nativeRequestAnimationFrame) {
+    if (hasRequestAnimationFrame) {
       nativeRequestAnimationFrame =
-          (nativeRequestAnimationFrame as any)[ORIGINAL_DELEGATE_SYMBOL] ??
-          nativeRequestAnimationFrame;
+          global[Zone.__symbol__('requestAnimationFrame')] ?? nativeRequestAnimationFrame;
     }
-    nativeSetTimeout = (nativeSetTimeout as any)[ORIGINAL_DELEGATE_SYMBOL] ?? nativeSetTimeout;
+    nativeSetTimeout = global[Zone.__symbol__('setTimeout')] ?? nativeSetTimeout;
   }
 
-  return (callback: Function) => {
-    let executeCallback = true;
-    nativeSetTimeout(() => {
-      if (!executeCallback) {
-        return;
-      }
-      executeCallback = false;
-      callback();
-    });
-    nativeRequestAnimationFrame?.(() => {
-      if (!executeCallback) {
-        return;
-      }
-      executeCallback = false;
-      callback();
-    });
+  let executeCallback = true;
+  nativeSetTimeout(() => {
+    if (!executeCallback) {
+      return;
+    }
+    executeCallback = false;
+    callback();
+  });
+  nativeRequestAnimationFrame?.(() => {
+    if (!executeCallback) {
+      return;
+    }
+    executeCallback = false;
+    callback();
+  });
 
-    return () => {
-      executeCallback = false;
-    };
+  return () => {
+    executeCallback = false;
   };
 }

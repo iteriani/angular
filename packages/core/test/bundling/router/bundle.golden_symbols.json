@@ -843,9 +843,6 @@
     "name": "addEmptyPathsToChildrenIfNeeded"
   },
   {
-    "name": "addLViewToLContainer"
-  },
-  {
     "name": "addPropertyBinding"
   },
   {
@@ -1248,9 +1245,6 @@
     "name": "getBootstrapListener"
   },
   {
-    "name": "getCallbackScheduler"
-  },
-  {
     "name": "getChildRouteGuards"
   },
   {
@@ -1620,6 +1614,9 @@
     "name": "isRefreshingViews"
   },
   {
+    "name": "isRootView"
+  },
+  {
     "name": "isSubscription"
   },
   {
@@ -1815,6 +1812,9 @@
     "name": "pathCompareMap"
   },
   {
+    "name": "performanceMarkFeature"
+  },
+  {
     "name": "pipeFromArray"
   },
   {
@@ -1914,6 +1914,9 @@
     "name": "scheduleAsyncIterable"
   },
   {
+    "name": "scheduleCallback"
+  },
+  {
     "name": "searchTokensOnInjector"
   },
   {
@@ -1986,9 +1989,6 @@
     "name": "shouldAddViewToDom"
   },
   {
-    "name": "shouldRecheckView"
-  },
-  {
     "name": "shouldSearchParent"
   },
   {
@@ -2053,6 +2053,9 @@
   },
   {
     "name": "toRefArray"
+  },
+  {
+    "name": "trackMovedView"
   },
   {
     "name": "tree"

@@ -16,27 +16,28 @@ import {withBody} from '@angular/private/testing';
 import {BehaviorSubject, firstValueFrom} from 'rxjs';
 import {filter, take, tap} from 'rxjs/operators';
 
+import {global} from '../src/util/global';
+
 function isStable(injector = TestBed.inject(EnvironmentInjector)): boolean {
   return toSignal(injector.get(ApplicationRef).isStable, {requireSync: true, injector})();
 }
 
-describe('Angular with NoopNgZone', () => {
+describe('Angular with zoneless enabled', () => {
   async function createFixture<T>(type: Type<T>): Promise<ComponentFixture<T>> {
     const fixture = TestBed.createComponent(type);
     await fixture.whenStable();
     return fixture;
   }
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideZonelessChangeDetection(),
+        {provide: PLATFORM_ID, useValue: PLATFORM_BROWSER_ID},
+      ]
+    });
+  });
 
   describe('notifies scheduler', () => {
-    beforeEach(() => {
-      TestBed.configureTestingModule({
-        providers: [
-          provideZonelessChangeDetection(),
-          {provide: PLATFORM_ID, useValue: PLATFORM_BROWSER_ID},
-        ]
-      });
-    });
-
     it('contributes to application stableness', async () => {
       const val = signal('initial');
       @Component({template: '{{val()}}', standalone: true})
@@ -428,7 +429,6 @@ describe('Angular with NoopNgZone', () => {
     }
     TestBed.configureTestingModule({
       providers: [
-        provideZonelessChangeDetection(),
         {
           provide: ErrorHandler, useClass: class extends ErrorHandler {
             override handleError(error: any): void {
@@ -453,15 +453,98 @@ describe('Angular with NoopNgZone', () => {
     await fixture.whenStable();
     expect(fixture.nativeElement.innerText).toEqual('new');
   });
+
+  it('change detects embedded view when attached to a host on ApplicationRef and declaration is marked for check',
+     async () => {
+       @Component({
+         template: '<ng-template #template><div>{{thing}}</div></ng-template>',
+         standalone: true,
+       })
+       class DynamicCmp {
+         @ViewChild('template') templateRef!: TemplateRef<{}>;
+         thing = 'initial';
+       }
+       @Component({
+         template: '',
+         standalone: true,
+       })
+       class Host {
+         readonly vcr = inject(ViewContainerRef);
+       }
+
+       const fixture = TestBed.createComponent(DynamicCmp);
+       const host =
+           createComponent(Host, {environmentInjector: TestBed.inject(EnvironmentInjector)});
+       TestBed.inject(ApplicationRef).attachView(host.hostView);
+       await fixture.whenStable();
+
+       const embeddedViewRef = fixture.componentInstance.templateRef.createEmbeddedView({});
+       host.instance.vcr.insert(embeddedViewRef);
+       await fixture.whenStable();
+       expect(embeddedViewRef.rootNodes[0].innerHTML).toContain('initial');
+
+       fixture.componentInstance.thing = 'new';
+       fixture.changeDetectorRef.markForCheck();
+       await fixture.whenStable();
+       expect(embeddedViewRef.rootNodes[0].innerHTML).toContain('new');
+     });
+
+  it('change detects embedded view when attached directly to ApplicationRef and declaration is marked for check',
+     async () => {
+       @Component({
+         template: '<ng-template #template><div>{{thing}}</div></ng-template>',
+         standalone: true,
+       })
+       class DynamicCmp {
+         @ViewChild('template') templateRef!: TemplateRef<{}>;
+         thing = 'initial';
+       }
+
+       const fixture = TestBed.createComponent(DynamicCmp);
+       await fixture.whenStable();
+
+       const embeddedViewRef = fixture.componentInstance.templateRef.createEmbeddedView({});
+       TestBed.inject(ApplicationRef).attachView(embeddedViewRef);
+       await fixture.whenStable();
+       expect(embeddedViewRef.rootNodes[0].innerHTML).toContain('initial');
+
+       fixture.componentInstance.thing = 'new';
+       fixture.changeDetectorRef.markForCheck();
+       await fixture.whenStable();
+       expect(embeddedViewRef.rootNodes[0].innerHTML).toContain('new');
+     });
+
+  it('does not fail when global timing functions are patched and unpatched', async () => {
+    @Component({template: '', standalone: true})
+    class App {
+      cdr = inject(ChangeDetectorRef);
+    }
+
+    let patched = false;
+    const originalSetTimeout = global.setTimeout;
+    global.setTimeout = (handler: any) => {
+      if (!patched) {
+        throw new Error('no longer patched');
+      }
+      originalSetTimeout(handler);
+    };
+    patched = true;
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    global.setTimeout = originalSetTimeout;
+    patched = false;
+    expect(() => {
+      // cause another scheduler notification. This should not fail due to `setTimeout` being
+      // unpatched.
+      fixture.componentInstance.cdr.markForCheck();
+    }).not.toThrow();
+    await fixture.whenStable();
+  });
 });
 
 describe('Angular with scheduler and ZoneJS', () => {
   // TODO(atscott): Update once option is public
   const hybridModeSchedulingOptions = {schedulingMode: 0} as any;
-  // TODO(atscott): should be removed in favor of fixture.whenStable once #54949 is merged
-  function whenStable(injector = TestBed.inject(EnvironmentInjector)): Promise<true> {
-    return firstValueFrom(injector.get(ApplicationRef).isStable.pipe(filter((v): v is true => v)));
-  }
 
   beforeEach(() => {
     TestBed.configureTestingModule(
@@ -481,8 +564,8 @@ describe('Angular with scheduler and ZoneJS', () => {
     TestBed.inject(NgZone).runOutsideAngular(() => {
       fixture.componentInstance.thing.set('new');
     });
-    expect(isStable()).toBe(true);
-    await whenStable();
+    expect(fixture.isStable()).toBe(true);
+    await fixture.whenStable();
     expect(fixture.nativeElement.innerText).toContain('initial');
   });
 
@@ -501,8 +584,8 @@ describe('Angular with scheduler and ZoneJS', () => {
     TestBed.inject(NgZone).runOutsideAngular(() => {
       fixture.componentInstance.thing.set('new');
     });
-    expect(isStable()).toBe(false);
-    await whenStable();
+    expect(fixture.isStable()).toBe(false);
+    await fixture.whenStable();
     expect(fixture.nativeElement.innerText).toContain('new');
   });
 });
