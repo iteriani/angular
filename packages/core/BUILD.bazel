@@ -31,6 +31,7 @@ ng_module(
     deps = [
         "//packages:types",
         "//packages/core/primitives/signals",
+        "//packages/core/primitives/some-random-lib",
         "//packages/core/src/compiler",
         "//packages/core/src/di/interface",
         "//packages/core/src/interface",
