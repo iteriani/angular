@@ -14,7 +14,7 @@ import {collectNativeNodes, collectNativeNodesInLContainer} from '../render3/col
 import {getComponentDef} from '../render3/definition';
 import {CONTAINER_HEADER_OFFSET, LContainer} from '../render3/interfaces/container';
 import {isTNodeShape, TNode, TNodeType} from '../render3/interfaces/node';
-import {RElement} from '../render3/interfaces/renderer_dom';
+import {RElement, RNode} from '../render3/interfaces/renderer_dom';
 import {hasI18n, isComponentHost, isLContainer, isProjectionTNode, isRootView} from '../render3/interfaces/type_checks';
 import {CONTEXT, HEADER_OFFSET, HOST, LView, PARENT, RENDERER, TView, TVIEW, TViewType} from '../render3/interfaces/view';
 import {unwrapLView, unwrapRNode} from '../render3/util/view_utils';
@@ -26,6 +26,21 @@ import {CONTAINERS, DISCONNECTED_NODES, ELEMENT_CONTAINERS, I18N_DATA, MULTIPLIE
 import {calcPathForNode, isDisconnectedNode} from './node_lookup_utils';
 import {isInSkipHydrationBlock, SKIP_HYDRATION_ATTR_NAME} from './skip_hydration';
 import {getLNodeForHydration, NGH_ATTR_NAME, NGH_DATA_KEY, processTextNodeBeforeSerialization, TextNodeMarker} from './utils';
+
+const EMPTY_MAP = new Map<Element, string[]>();
+let getElementsToEvents: (tView: TView, lView: LView) => Map<Element, string[]> = () => EMPTY_MAP;
+let setJSActionAttribute: (
+    tNode: TNode, rNode: RNode, nativeElementToEvents: Map<Element, string[]>,
+    context: HydrationContext) => void = () => {};
+let insertEventReplaySupport: (eventsToReplay: Set<string>, doc: Document) => void = () => {};
+
+export const setJsactionFunctions =
+    (eventMapGetter: typeof getElementsToEvents, attrSetter: typeof setJSActionAttribute,
+     replaySupportSetter: typeof insertEventReplaySupport) => {
+      getElementsToEvents = eventMapGetter;
+      setJSActionAttribute = attrSetter;
+      insertEventReplaySupport = replaySupportSetter;
+    };
 
 /**
  * A collection that tracks all serialized views (`ngh` DOM annotations)
@@ -84,6 +99,7 @@ export interface HydrationContext {
   corruptedTextNodes: Map<HTMLElement, TextNodeMarker>;
   isI18nHydrationEnabled: boolean;
   i18nChildren: Map<TView, Set<number>|null>;
+  eventsToReplay: Set<string>;
 }
 
 /**
@@ -168,6 +184,7 @@ export function annotateForHydration(appRef: ApplicationRef, doc: Document) {
   const serializedViewCollection = new SerializedViewCollection();
   const corruptedTextNodes = new Map<HTMLElement, TextNodeMarker>();
   const viewRefs = appRef._views;
+  const eventsToReplay = new Set<string>();
   for (const viewRef of viewRefs) {
     const lNode = getLNodeForHydration(viewRef);
 
@@ -179,6 +196,7 @@ export function annotateForHydration(appRef: ApplicationRef, doc: Document) {
         corruptedTextNodes,
         isI18nHydrationEnabled: isI18nHydrationEnabledVal,
         i18nChildren: new Map(),
+        eventsToReplay,
       };
       if (isLContainer(lNode)) {
         annotateLContainerForHydration(lNode, context);
@@ -188,6 +206,8 @@ export function annotateForHydration(appRef: ApplicationRef, doc: Document) {
       insertCorruptedTextNodeMarkers(corruptedTextNodes, doc);
     }
   }
+
+  insertEventReplaySupport(eventsToReplay, doc);
 
   // Note: we *always* include hydration info key and a corresponding value
   // into the TransferState, even if the list of serialized views is empty.
@@ -322,10 +342,12 @@ function serializeLView(lView: LView, context: HydrationContext): SerializedView
   const ngh: SerializedView = {};
   const tView = lView[TVIEW];
   const i18nChildren = getOrComputeI18nChildren(tView, context);
+  const nativeElementsToElements = getElementsToEvents(tView, lView);
   // Iterate over DOM element references in an LView.
   for (let i = HEADER_OFFSET; i < tView.bindingStartIndex; i++) {
     const tNode = tView.data[i] as TNode;
     const noOffsetIndex = i - HEADER_OFFSET;
+    setJSActionAttribute(tNode, lView[i], nativeElementsToElements!, context);
 
     // Attempt to serialize any i18n data for the given slot. We do this first, as i18n
     // has its own process for serialization.
