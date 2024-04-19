@@ -1,0 +1,13 @@
+load("//tools:defaults.bzl", "ts_library")
+
+package(default_visibility = ["//visibility:public"])
+
+ts_library(
+    name = "some-random-lib",
+    srcs = glob(
+        [
+            "**/*.ts",
+        ],
+    ),
+    module_name = "@angular/core/primitives/some-random-lib",
+)

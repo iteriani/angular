@@ -6,7 +6,7 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {Foo} from '@angular/core/primitives/haha';
+import {Foo} from '@angular/core/primitives/some-random-lib';
 
 import {Provider} from '../di/interface/provider';
 import {TNode, TNodeType} from '../render3/interfaces/node';
@@ -26,7 +26,11 @@ export function withEventReplay(): Provider[] {
   return [
     {
       provide: IS_EVENT_REPLAY_ENABLED,
-      useValue: true,
+      useFactory: () => {
+        const foo = new Foo();
+        console.log(foo);
+        return true;
+      },
     },
   ];
 }
