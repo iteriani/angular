@@ -12,8 +12,7 @@ import {EventContract} from '@angular/core/primitives/event-dispatch';
 import {TestBed} from '@angular/core/testing';
 import {bootstrapApplication, provideClientHydration} from '@angular/platform-browser';
 import {withEventReplay} from '@angular/platform-browser/src/hydration';
-import * as fs from 'fs';
-
+import {readFile} from 'node:fs/promises';
 import {provideServerRendering} from '../public_api';
 import {EVENT_DISPATCH_SCRIPT_ID, renderApplication} from '../src/utils';
 
@@ -87,10 +86,10 @@ describe('event replay', () => {
         expect(eventContract).toBeDefined();
       }
 
-      beforeAll(() => {
-        const text = fs
-          .readFileSync('packages/core/primitives/event-dispatch/contract_bundle_min.js')
-          .toString();
+      beforeAll(async () => {
+        const text = (
+          await readFile('packages/core/primitives/event-dispatch/contract_bundle_min.js')
+        ).toString();
         globalThis.window = globalThis as unknown as Window & typeof globalThis;
         eval(text);
       });
